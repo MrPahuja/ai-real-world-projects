@@ -1,8 +1,8 @@
-# Document Q&A Bot
+# Semantic Vector Bot
 
-Upload a PDF. Ask questions about it. Get answers with source citations, streamed word by word in real time.
+Upload a PDF. Ask anything about it. Get answers with source citations, streamed word by word in real time.
 
-This project uses semantic search, which means it understands the meaning of your question, not just the exact words. It finds relevant text even if you phrase things differently from how the document was written.
+Semantic Vector Bot uses semantic search, which means it understands the meaning of your question, not just the exact words. It finds relevant text even if you phrase things differently from how the document was written.
 
 ---
 
@@ -15,6 +15,8 @@ The embedding step runs fully on your CPU. No embedding API key needed.
 ---
 
 ## How it works, step by step
+
+![Document Q&A Bot architecture diagram](architecture.svg)
 
 ```
 INDEXING (runs once when you upload a PDF)

@@ -1,0 +1,163 @@
+<svg width="760" height="960" viewBox="0 0 760 960" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#f1f5f9"/>
+    </linearGradient>
+    <linearGradient id="tG" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ecfdf5"/>
+      <stop offset="100%" stop-color="#d1fae5"/>
+    </linearGradient>
+    <linearGradient id="vG" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f5f3ff"/>
+      <stop offset="100%" stop-color="#ede9fe"/>
+    </linearGradient>
+    <linearGradient id="oG" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#fffbeb"/>
+      <stop offset="100%" stop-color="#fef3c7"/>
+    </linearGradient>
+    <filter id="sh" x="-3%" y="-5%" width="106%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#94a3b8" flood-opacity="0.18"/>
+    </filter>
+    <marker id="mT" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,2 L10,6 L0,10Z" fill="#059669"/>
+    </marker>
+    <marker id="mV" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,2 L10,6 L0,10Z" fill="#7c3aed"/>
+    </marker>
+    <marker id="mO" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,2 L10,6 L0,10Z" fill="#d97706"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="760" height="960" rx="16" fill="url(#bgG)" stroke="#e2e8f0" stroke-width="1"/>
+
+  <!-- Header -->
+  <rect width="760" height="74" rx="16" fill="white"/>
+  <rect y="58" width="760" height="16" fill="white"/>
+  <text x="380" y="34" text-anchor="middle" font-family="system-ui,-apple-system,'Segoe UI',sans-serif" font-size="21" font-weight="700" fill="#0f172a">BM25 Keyword Bot</text>
+  <text x="380" y="57" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="12" fill="#64748b">Architecture and Data Flow · Local keyword search + Gemini Flash</text>
+
+  <!-- SECTION 1 HEADER -->
+  <rect x="30" y="80" width="700" height="26" rx="6" fill="#059669" fill-opacity="0.13"/>
+  <text x="380" y="97" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="10" font-weight="700" fill="#047857" letter-spacing="1.5">INDEXING  ·  FULLY LOCAL  ·  RUNS ONCE PER DOCUMENT</text>
+
+  <!-- Step 1 -->
+  <rect x="40" y="114" width="680" height="52" rx="10" fill="url(#tG)" stroke="#10b981" stroke-width="1.5" filter="url(#sh)"/>
+  <circle cx="76" cy="140" r="15" fill="#059669"/>
+  <text x="76" y="145" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">1</text>
+  <text x="103" y="135" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#065f46">Upload PDF and extract text</text>
+  <text x="103" y="154" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#047857">pypdf reads every page and joins the full text</text>
+
+  <!-- Arrow 1 to 2 (36px gap) -->
+  <line x1="380" y1="167" x2="380" y2="197" stroke="#10b981" stroke-width="3.5" stroke-dasharray="10 6" marker-end="url(#mT)">
+    <animate attributeName="stroke-dashoffset" from="16" to="0" dur="0.7s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- Step 2 -->
+  <rect x="40" y="200" width="680" height="52" rx="10" fill="url(#tG)" stroke="#10b981" stroke-width="1.5" filter="url(#sh)"/>
+  <circle cx="76" cy="226" r="15" fill="#059669"/>
+  <text x="76" y="231" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">2</text>
+  <text x="103" y="221" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#065f46">Split into overlapping chunks</text>
+  <text x="103" y="240" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#047857">1500 characters each with a 150 character overlap at boundaries</text>
+
+  <!-- Arrow 2 to 3 -->
+  <line x1="380" y1="253" x2="380" y2="283" stroke="#10b981" stroke-width="3.5" stroke-dasharray="10 6" marker-end="url(#mT)">
+    <animate attributeName="stroke-dashoffset" from="16" to="0" dur="0.7s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- Step 3 -->
+  <rect x="40" y="286" width="680" height="52" rx="10" fill="url(#tG)" stroke="#10b981" stroke-width="1.5" filter="url(#sh)"/>
+  <circle cx="76" cy="312" r="15" fill="#059669"/>
+  <text x="76" y="317" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">3</text>
+  <text x="103" y="307" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#065f46">Tokenize each chunk</text>
+  <text x="103" y="326" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#047857">Lowercase, strip punctuation, split on whitespace</text>
+
+  <!-- Arrow 3 to 4 -->
+  <line x1="380" y1="339" x2="380" y2="369" stroke="#10b981" stroke-width="3.5" stroke-dasharray="10 6" marker-end="url(#mT)">
+    <animate attributeName="stroke-dashoffset" from="16" to="0" dur="0.7s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- Step 4 -->
+  <rect x="40" y="372" width="680" height="52" rx="10" fill="url(#tG)" stroke="#10b981" stroke-width="1.5" filter="url(#sh)"/>
+  <circle cx="76" cy="398" r="15" fill="#059669"/>
+  <text x="76" y="403" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">4</text>
+  <text x="103" y="393" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#065f46">Build BM25Okapi index in memory</text>
+  <text x="103" y="412" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#047857">rank-bm25 library, no disk writes, no vector DB, instant startup</text>
+
+  <!-- Transition -->
+  <line x1="380" y1="424" x2="380" y2="442" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="4 3"/>
+
+  <!-- SECTION 2 HEADER -->
+  <rect x="30" y="444" width="700" height="26" rx="6" fill="#7c3aed" fill-opacity="0.10"/>
+  <text x="380" y="461" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="10" font-weight="700" fill="#6d28d9" letter-spacing="1.5">RETRIEVAL  ·  FULLY LOCAL  ·  RUNS EACH TIME YOU ASK</text>
+
+  <!-- Step 5 -->
+  <rect x="40" y="478" width="680" height="52" rx="10" fill="url(#vG)" stroke="#7c3aed" stroke-width="1.5" filter="url(#sh)"/>
+  <circle cx="76" cy="504" r="15" fill="#7c3aed"/>
+  <text x="76" y="509" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">5</text>
+  <text x="103" y="499" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#4c1d95">You ask a question</text>
+  <text x="103" y="518" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#6d28d9">Typed into the Gradio chat interface</text>
+
+  <!-- Arrow 5 to 6 -->
+  <line x1="380" y1="531" x2="380" y2="561" stroke="#7c3aed" stroke-width="3.5" stroke-dasharray="10 6" marker-end="url(#mV)">
+    <animate attributeName="stroke-dashoffset" from="16" to="0" dur="0.7s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- Step 6 -->
+  <rect x="40" y="564" width="680" height="52" rx="10" fill="url(#vG)" stroke="#7c3aed" stroke-width="1.5" filter="url(#sh)"/>
+  <circle cx="76" cy="590" r="15" fill="#7c3aed"/>
+  <text x="76" y="595" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">6</text>
+  <text x="103" y="585" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#4c1d95">Tokenize question, BM25 scores every chunk</text>
+  <text x="103" y="604" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#6d28d9">Same tokenizer, ranks all chunks by keyword match score</text>
+
+  <!-- Arrow 6 to 7 -->
+  <line x1="380" y1="617" x2="380" y2="647" stroke="#7c3aed" stroke-width="3.5" stroke-dasharray="10 6" marker-end="url(#mV)">
+    <animate attributeName="stroke-dashoffset" from="16" to="0" dur="0.7s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- Step 7 -->
+  <rect x="40" y="650" width="680" height="52" rx="10" fill="url(#vG)" stroke="#7c3aed" stroke-width="1.5" filter="url(#sh)"/>
+  <circle cx="76" cy="676" r="15" fill="#7c3aed"/>
+  <text x="76" y="681" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">7</text>
+  <text x="103" y="671" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#4c1d95">Select top-K highest scoring chunks</text>
+  <text x="103" y="690" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#6d28d9">Adjustable 1 to 15 via slider, only chunks with a score above zero</text>
+
+  <!-- Transition -->
+  <line x1="380" y1="702" x2="380" y2="720" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="4 3"/>
+
+  <!-- SECTION 3 HEADER -->
+  <rect x="30" y="722" width="700" height="26" rx="6" fill="#d97706" fill-opacity="0.13"/>
+  <text x="380" y="739" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="10" font-weight="700" fill="#b45309" letter-spacing="1.5">GENERATION  ·  ONE FREE GOOGLE API KEY NEEDED</text>
+
+  <!-- Step 8 (pulsing) -->
+  <rect x="40" y="756" width="680" height="52" rx="10" fill="url(#oG)" stroke="#f59e0b" stroke-width="2" filter="url(#sh)">
+    <animate attributeName="stroke-opacity" values="1;0.3;1" dur="1.8s" repeatCount="indefinite"/>
+  </rect>
+  <circle cx="76" cy="782" r="15" fill="#d97706"/>
+  <text x="76" y="787" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">8</text>
+  <text x="103" y="777" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#78350f">Top chunks and question sent to Gemini Flash</text>
+  <text x="103" y="796" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#92400e">Packed into a system prompt, streamed via Google API, free tier</text>
+
+  <!-- Arrow 8 to 9 -->
+  <line x1="380" y1="809" x2="380" y2="839" stroke="#d97706" stroke-width="3.5" stroke-dasharray="10 6" marker-end="url(#mO)">
+    <animate attributeName="stroke-dashoffset" from="16" to="0" dur="0.4s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- Step 9 -->
+  <rect x="40" y="842" width="680" height="52" rx="10" fill="url(#oG)" stroke="#f59e0b" stroke-width="1.5" filter="url(#sh)"/>
+  <circle cx="76" cy="868" r="15" fill="#d97706"/>
+  <text x="76" y="873" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">9</text>
+  <text x="103" y="863" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#78350f">Answer streamed back with source citations</text>
+  <text x="103" y="882" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#92400e">Words appear token by token, sources listed at the end of the reply</text>
+
+  <!-- Legend -->
+  <rect x="30" y="910" width="700" height="36" rx="10" fill="white" stroke="#e2e8f0" stroke-width="1"/>
+  <circle cx="96" cy="928" r="7" fill="#059669"/>
+  <text x="110" y="932" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#475569">Indexing: fully local</text>
+  <circle cx="256" cy="928" r="7" fill="#7c3aed"/>
+  <text x="270" y="932" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#475569">Retrieval: fully local</text>
+  <circle cx="412" cy="928" r="7" fill="#d97706"/>
+  <text x="426" y="932" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#475569">Generation: requires free Google API key</text>
+</svg>
