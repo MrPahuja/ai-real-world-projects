@@ -37,11 +37,13 @@ RAG is the technique of finding relevant pieces of a document and using them as 
 
 #### `rag/bm25-keyword-bot`
 
-Upload a PDF and ask questions about it. The search runs fully on your computer using keyword matching. No embeddings, no vector database, no GPU required. You only need one free Google API key for the final answer.
+Upload a PDF and ask questions about it using pure keyword search. Built for learning. No embeddings, no vector database, no GPU. Just BM25 and a free Gemini API key.
+
+Most production RAG systems do not use BM25 alone. They combine it with vector search in what is called hybrid search, which is often better than either method on its own. This project teaches you the BM25 half of that equation so you understand what you are combining and why.
 
 - **Stack:** Python, rank-bm25, pypdf, Google Gemini Flash, Gradio
-- **Key concept:** BM25 keyword search as a replacement for vector embeddings
-- **What makes it interesting:** You learn that RAG does not always need expensive embedding APIs. A fast keyword index is enough for many use cases.
+- **Key concept:** BM25 keyword retrieval as a foundation for understanding hybrid search
+- **What you learn:** How retrieval works before vectors, why keyword matching matters, and where BM25 fits in production systems
 - **API keys needed:** Google Gemini (free tier)
 - **Difficulty:** Beginner
 

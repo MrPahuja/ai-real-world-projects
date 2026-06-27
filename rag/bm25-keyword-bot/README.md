@@ -22,11 +22,18 @@ The search and retrieval part is fully local. You do need a free Google API key 
 
 ---
 
-## Why does this matter?
+## Why this project exists
 
-Most RAG systems need two APIs: one to create embeddings (turning text into numbers), and one to generate the answer. This project skips the embeddings step entirely by using BM25 keyword matching instead. That makes setup simpler, startup instant, and running costs lower.
+This project is built for learning. It teaches you the retrieval half of RAG in the simplest possible way, with no embeddings, no vector database, and no extra setup.
 
-You still need Gemini for the final answer. But you do not need any embeddings API, vector database, or model running locally.
+In production, most serious RAG systems do not use BM25 on its own. They use one of two approaches:
+
+1. **Pure vector search** (like the Semantic Vector Bot in this repo): understands meaning, handles synonyms and paraphrasing, but needs a model and a vector database.
+2. **Hybrid search**: runs BM25 and vector search in parallel, then combines the results using a technique called reciprocal rank fusion (RRF). This is what Elasticsearch, Weaviate, and most production search systems do. It is often better than either approach alone.
+
+So BM25 is not obsolete. It is half of the best-of-both-worlds solution used in production. But you need to understand it on its own before you can combine it effectively.
+
+This project gives you that foundation. Once you understand how BM25 retrieval works here, the jump to hybrid search makes complete sense.
 
 ---
 
