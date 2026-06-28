@@ -64,18 +64,37 @@ from qdrant_client.models import (
 import pypdf
 
 load_dotenv()
+
+# Always configure Gemini for embeddings & OCR fallback
 genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
 
 # ── Config ─────────────────────────────────────────────────────────────────────
-EMBED_MODEL   = "models/text-embedding-004"   # free, 768 dims
-CHAT_MODEL    = "gemini-1.5-flash-latest"      # free tier
-VECTOR_DIM    = 768
+EMBED_MODEL   = "models/gemini-embedding-001"   # free, 768 dims
+PROVIDER      = os.getenv("LLM_PROVIDER", "gemini").lower()
+CHAT_MODEL    = os.getenv("CHAT_MODEL", "gemini-1.5-flash-latest")
+VECTOR_DIM    = 3072
 CHUNK_SIZE    = 900     # characters per chunk
 CHUNK_OVERLAP = 100     # overlap between consecutive chunks
 BM25_POOL     = 20      # candidates from BM25 before ACL filter
 VECTOR_POOL   = 20      # candidates from vector search before ACL filter
 FINAL_TOP_K   = 5       # chunks passed to the LLM
 RRF_K         = 60      # RRF constant (standard value, reduces position bias)
+
+# Initialize OpenAI/OpenRouter client if needed
+openai_client = None
+if PROVIDER == "openai":
+    from openai import OpenAI
+    openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+elif PROVIDER == "openrouter":
+    from openai import OpenAI
+    openai_client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.getenv("OPENROUTER_API_KEY", ""),
+        default_headers={
+            "HTTP-Referer": "https://github.com/enterprise-search-bot",
+            "X-Title": "Enterprise Search Bot"
+        }
+    )
 
 
 # ── Data model ─────────────────────────────────────────────────────────────────
@@ -107,112 +126,61 @@ bm25_store: dict[str, dict] = {}
 # ── Sample documents ───────────────────────────────────────────────────────────
 # Loaded at startup so the UI works immediately without uploading anything.
 # Each document has an allowed_users list that controls who can see it.
-# An empty list means everyone in the tenant can access it.
+# An empty list means everyone in the cabinet can access it.
 
 SAMPLE_DOCS = [
     {
         "text": (
-            "ACME Corp Employee Salary Bands 2024\n\n"
-            "Level 1 (Junior):  28,000 to 38,000\n"
-            "Level 2 (Mid):     38,000 to 55,000\n"
-            "Level 3 (Senior):  55,000 to 80,000\n"
-            "Level 4 (Lead):    80,000 to 110,000\n"
-            "Level 5 (Staff):  110,000 to 150,000\n\n"
-            "Salary reviews run every January. Band adjustments require VP approval.\n"
-            "Benefits include 25 days PTO, private healthcare, and 5% pension matching.\n"
-            "Performance bonuses range from 5% to 20% of base salary."
+            "My Private Journal - June 2024\n\n"
+            "June 10: Thinking of getting Mom a nice gardening set for her birthday next month. Need to keep it secret.\n"
+            "June 14: Went to the dentist today. Need to pay the remaining invoice of $85.00 by next week.\n"
+            "June 18: Started learning Python. It's really fun! The Agentic AI lessons make so much sense."
         ),
-        "source": "HR: Salary Bands 2024",
-        "tenant_id": "acme-corp",
-        "allowed_users": ["alice", "admin"],
+        "source": "My Personal Journal",
+        "tenant_id": "my-cabinet",
+        "allowed_users": ["self"],
     },
     {
         "text": (
-            "ADR-007: Vector Database Selection\n"
-            "Engineering Architecture Decision Record\n\n"
-            "Decision: Adopt Qdrant as the primary vector store for all ML search features.\n\n"
-            "Context: The team evaluated Pinecone, Weaviate, Milvus, and Qdrant.\n"
-            "Qdrant was selected because:\n"
-            "  1. Native hybrid search: sparse + dense vectors in a single query\n"
-            "  2. On-premise deployment option for data sovereignty requirements\n"
-            "  3. Superior payload filtering, essential for per-tenant access control\n"
-            "  4. Rust implementation gives better p99 latency than Python-based alternatives\n\n"
-            "Implications: All new RAG pipelines must use Qdrant.\n"
-            "Legacy Pinecone collections to be migrated by Q2 2025.\n"
-            "Local development uses QdrantClient(':memory:').\n\n"
-            "Status: Accepted. Owner: Bob Chen. Date: 2024-03-12."
+            "Biology Class Group Project Notes\n"
+            "Topic: Photosynthesis and Cellular Respiration.\n"
+            "Group members: Self, Study Partner.\n\n"
+            "Key Details:\n"
+            "  1. Photosynthesis converts light energy into chemical energy stored in glucose.\n"
+            "  2. Cellular respiration breaks down glucose to produce ATP (energy).\n"
+            "  3. Presentation date: July 12. We need to submit the slides by July 10.\n\n"
+            "Tasks:\n"
+            "  - Self: Research Light-Independent Reactions (Calvin Cycle).\n"
+            "  - Study Partner: Design the PowerPoint slides and write the abstract."
         ),
-        "source": "Eng: ADR-007 Vector DB",
-        "tenant_id": "acme-corp",
-        "allowed_users": ["bob", "admin"],
+        "source": "Biology Group Project",
+        "tenant_id": "my-cabinet",
+        "allowed_users": ["self", "study_partner"],
     },
     {
         "text": (
-            "ACME Corp Company Handbook\n\n"
-            "ACME Corp builds AI-powered search tools for the enterprise market.\n"
-            "Founded in 2019, we are now 350 people across London, Berlin, and Singapore.\n\n"
-            "Values: Move fast. Be honest. Build for reliability.\n\n"
-            "Working hours: Core hours are 10am to 4pm in your local timezone.\n"
-            "We are fully remote-first. Offices are available for collaboration days.\n\n"
-            "Meetings: All-hands every second Friday at 3pm UTC.\n"
-            "One-on-ones with your manager: weekly, 30 minutes.\n\n"
-            "Contacts:\n"
-            "  HR questions: people@acmecorp.com\n"
-            "  Engineering questions: #eng-help on Slack\n"
-            "  IT support: it@acmecorp.com"
+            "Alice's Adventures in Wonderland - Public Summary\n"
+            "Written by Lewis Carroll in 1865.\n\n"
+            "Key Characters:\n"
+            "  - Alice: A young girl who falls down a rabbit hole into a fantasy world.\n"
+            "  - The White Rabbit: The prompt and anxious rabbit who leads Alice down the hole.\n"
+            "  - The Cheshire Cat: A grinning cat who can disappear and reappear at will.\n"
+            "  - The Queen of Hearts: The hot-tempered ruler who frequently orders executions ('Off with their heads!').\n\n"
+            "Famous Scenes:\n"
+            "  1. The Mad Tea-Party with the Mad Hatter and the March Hare.\n"
+            "  2. The caucus-race and Alice swimming in a pool of her own tears."
         ),
-        "source": "Company Handbook",
-        "tenant_id": "acme-corp",
-        "allowed_users": [],  # empty = all users in the tenant
-    },
-    {
-        "text": (
-            "Q3 2024 Sales Targets and Pipeline Review\n\n"
-            "Regional targets:\n"
-            "  UK and Ireland: 2.4M  (110% of Q2 actuals)\n"
-            "  DACH:           1.8M  (new region, conservative target)\n"
-            "  Nordics:        900K  (existing accounts + 3 new enterprise logos)\n\n"
-            "Key deals in pipeline:\n"
-            "  1. NatWest Group: 420K ARR. Security review in progress. Close expected August.\n"
-            "  2. Deutsche Bank: 380K ARR. Champion identified. Procurement engaged.\n"
-            "  3. Volvo Cars:    220K ARR. POC complete. Awaiting board sign-off.\n\n"
-            "Churn risk accounts: Two accounts flagged due to product gaps in mobile search.\n"
-            "Customer Success to deliver retention plan by July 15."
-        ),
-        "source": "Sales: Q3 2024 Targets",
-        "tenant_id": "acme-corp",
-        "allowed_users": ["charlie", "alice", "admin"],
-    },
-    {
-        "text": (
-            "P0 Incident Report: Search Outage, June 14 2024\n\n"
-            "Duration: 47 minutes (02:13 to 03:00 UTC)\n"
-            "Impact: 100% of search queries failed for all tenants.\n"
-            "Root cause: Qdrant OOM. A rogue batch indexing job consumed all container "
-            "memory, triggering an OOM kill.\n\n"
-            "Timeline:\n"
-            "  02:13  Alert: search p99 latency over 30 seconds\n"
-            "  02:18  On-call engineer paged\n"
-            "  02:31  Root cause identified: Qdrant OOM-killed\n"
-            "  02:40  Qdrant restarted with memory limit raised to 16GB\n"
-            "  03:00  All health checks passing. Incident resolved.\n\n"
-            "Action items:\n"
-            "  Per-job memory quotas for indexing pipeline (Bob, due Jul 1)\n"
-            "  Qdrant memory utilisation added to runbook (Bob, due Jun 21)\n"
-            "  Synthetic search latency monitoring (Alice, due Jun 28)"
-        ),
-        "source": "Eng: P0 Incident Report",
-        "tenant_id": "acme-corp",
-        "allowed_users": ["bob", "admin"],
+        "source": "Alice in Wonderland Summary",
+        "tenant_id": "my-cabinet",
+        "allowed_users": [],  # empty = public (all users)
     },
 ]
 
 # Who can see what -- shown in the UI sidebar for reference
 USER_ACCESS_GUIDE = {
-    "alice":   "Salary bands, Sales targets, Company handbook",
-    "bob":     "Engineering ADR, Incident report, Company handbook",
-    "charlie": "Sales targets, Company handbook",
-    "admin":   "All documents",
+    "self":          "Personal journal, Biology project, Alice in Wonderland book",
+    "study_partner": "Biology project, Alice in Wonderland book",
+    "guest":         "Alice in Wonderland book only",
 }
 
 
@@ -313,16 +281,16 @@ def vector_retrieve(query: str, tenant_id: str, user_id: str) -> list[str]:
     Vector search is strong on meaning, paraphrasing, and conceptual queries.
     """
     query_emb = embed(query)
-    results = qdrant.search(
+    response = qdrant.query_points(
         collection_name="kb",
-        query_vector=query_emb,
+        query=query_emb,
         limit=VECTOR_POOL * 3,   # fetch extra to compensate for post-filtering loss
         query_filter=Filter(
             must=[FieldCondition(key="tenant_id", match=MatchValue(value=tenant_id))]
         ),
     )
     accessible = [
-        r for r in results
+        r for r in response.points
         if not r.payload.get("allowed_users") or user_id in r.payload["allowed_users"]
     ]
     return [r.payload["chunk_id"] for r in accessible[:VECTOR_POOL]]
@@ -377,24 +345,32 @@ def respond(message: str, history: list, tenant_id: str, user_id: str):
         yield "", history
         return
 
+    # 1. Immediately append the user message to history and yield
+    # so the user sees their query instantly on the UI!
+    history = history + [
+        {"role": "user",      "content": message},
+        {"role": "assistant", "content": "Thinking..."},
+    ]
+    yield "", history
+
     if not chunk_store:
-        history = history + [
-            {"role": "user",      "content": message},
-            {"role": "assistant", "content": "No documents indexed yet. Upload a PDF to get started."},
-        ]
+        history[-1]["content"] = "No documents indexed yet. Upload a PDF to get started."
         yield "", history
         return
 
-    chunks, debug = hybrid_search(message, tenant_id, user_id)
+    # 2. Run retrieval inside a try-except block
+    try:
+        chunks, debug = hybrid_search(message, tenant_id, user_id)
+    except Exception as e:
+        history[-1]["content"] = f"Retrieval Error: {str(e)}"
+        yield "", history
+        return
 
     if not chunks:
-        history = history + [
-            {"role": "user",      "content": message},
-            {"role": "assistant", "content": (
-                f"No documents found that **{user_id}** has access to for this query.\n\n"
-                f"Try switching to **admin** or uploading a document with access for {user_id}."
-            )},
-        ]
+        history[-1]["content"] = (
+            f"No documents found that **{user_id}** has access to for this query.\n\n"
+            f"Try switching to **admin** or uploading a document with access for {user_id}."
+        )
         yield "", history
         return
 
@@ -419,22 +395,70 @@ def respond(message: str, history: list, tenant_id: str, user_id: str):
         f"- **Sources cited:** {', '.join(set(debug['final']))}"
     )
 
-    history = history + [
-        {"role": "user",      "content": message},
-        {"role": "assistant", "content": ""},
-    ]
+    # 3. Stream from model
+    full = ""
+    if PROVIDER in ("openai", "openrouter"):
+        if not openai_client:
+            history[-1]["content"] = f"Error: Provider '{PROVIDER}' selected, but client is not initialized. Please verify your API keys."
+            yield "", history
+            return
 
-    model    = genai.GenerativeModel(CHAT_MODEL)
-    response = model.generate_content(prompt, stream=True)
-    full     = ""
-
-    for part in response:
-        full += part.text
-        history[-1]["content"] = full
-        yield "", history
+        try:
+            response = openai_client.chat.completions.create(
+                model=CHAT_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful knowledge assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                stream=True
+            )
+            for chunk in response:
+                delta = chunk.choices[0].delta.content if chunk.choices and chunk.choices[0].delta else None
+                if delta:
+                    full += delta
+                    history[-1]["content"] = full
+                    yield "", history
+        except Exception as e:
+            history[-1]["content"] = f"API Error ({PROVIDER}): {str(e)}"
+            yield "", history
+            return
+    else:
+        # Default Gemini flow
+        try:
+            model    = genai.GenerativeModel(CHAT_MODEL)
+            response = model.generate_content(prompt, stream=True)
+            for part in response:
+                full += part.text
+                history[-1]["content"] = full
+                yield "", history
+        except Exception as e:
+            history[-1]["content"] = f"API Error (gemini): {str(e)}"
+            yield "", history
+            return
 
     history[-1]["content"] = full + debug_md
     yield "", history
+
+
+def ocr_pdf_with_gemini(file_path: str) -> str:
+    """Upload a scanned PDF to Google's Files API and extract text using Gemini."""
+    if not os.getenv("GEMINI_API_KEY"):
+        raise ValueError("GEMINI_API_KEY is not set. Cannot run OCR fallback.")
+    
+    # Upload the file to Gemini Files API
+    uploaded_file = genai.upload_file(path=file_path)
+    
+    try:
+        model = genai.GenerativeModel("gemini-1.5-flash-latest")
+        prompt = (
+            "Perform OCR on this document. Transcribe all text, tables, and handwritten notes page-by-page. "
+            "Preserve the original layout as much as possible, converting tables to Markdown format."
+        )
+        response = model.generate_content([uploaded_file, prompt])
+        return response.text
+    finally:
+        # Clean up the file from the Google files hosting
+        uploaded_file.delete()
 
 
 # ── Upload handler ───────────────────────────────────────────────────────────────
@@ -447,13 +471,23 @@ def upload_pdf(file, source_name: str, tenant_id: str, users_str: str):
 
     reader  = pypdf.PdfReader(file.name)
     text    = "\n".join(page.extract_text() or "" for page in reader.pages)
+    
+    status_msg = ""
+    # Fallback to Gemini OCR if text is empty or too short (scanned PDF detection)
+    if len(text.strip()) < 50:
+        try:
+            text = ocr_pdf_with_gemini(file.name)
+            status_msg = " [OCR Fallback used]"
+        except Exception as e:
+            return f"Failed to extract text using standard parser, and OCR failed: {str(e)}"
+
     if not text.strip():
         return "Could not extract text from this PDF."
 
     allowed = [u.strip() for u in users_str.split(",") if u.strip()] if users_str.strip() else []
     n       = index_document(text, source_name.strip(), tenant_id.strip(), allowed)
     access  = ", ".join(allowed) if allowed else "all users in tenant"
-    return f"Indexed {n} chunk(s) from '{source_name}'.\nAccess granted to: {access}."
+    return f"Indexed {n} chunk(s) from '{source_name}'.{status_msg}\nAccess granted to: {access}."
 
 
 def corpus_stats(tenant_id: str) -> str:
@@ -520,33 +554,98 @@ body, .gradio-container {
 }
 """
 
+def generate_sample_pdfs():
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet
+    
+    os.makedirs("sample_files", exist_ok=True)
+    styles = getSampleStyleSheet()
+    
+    # 1. My Personal Journal PDF
+    pdf_path1 = "sample_files/My_Personal_Journal.pdf"
+    if not os.path.exists(pdf_path1):
+        doc = SimpleDocTemplate(pdf_path1, pagesize=letter)
+        story = [
+            Paragraph("<b>My Private Journal - June 2024</b>", styles["Title"]),
+            Spacer(1, 15),
+            Paragraph("<b>June 10:</b> Thinking of getting Mom a nice gardening set for her birthday next month. Need to keep it secret.", styles["Normal"]),
+            Spacer(1, 10),
+            Paragraph("<b>June 14:</b> Went to the dentist today. Need to pay the remaining invoice of $85.00 by next week.", styles["Normal"]),
+            Spacer(1, 10),
+            Paragraph("<b>June 18:</b> Started learning Python. It's really fun! The Agentic AI lessons make so much sense.", styles["Normal"]),
+        ]
+        doc.build(story)
+
+    # 2. Biology Group Project PDF
+    pdf_path2 = "sample_files/Biology_Group_Project.pdf"
+    if not os.path.exists(pdf_path2):
+        doc = SimpleDocTemplate(pdf_path2, pagesize=letter)
+        story = [
+            Paragraph("<b>Biology Class Group Project Notes</b>", styles["Title"]),
+            Spacer(1, 15),
+            Paragraph("<b>Topic:</b> Photosynthesis and Cellular Respiration.<br/><b>Group members:</b> Self, Study Partner.", styles["Normal"]),
+            Spacer(1, 12),
+            Paragraph("<b>Key Details:</b>", styles["Heading3"]),
+            Paragraph("1. Photosynthesis converts light energy into chemical energy stored in glucose.", styles["Normal"]),
+            Paragraph("2. Cellular respiration breaks down glucose to produce ATP (energy).", styles["Normal"]),
+            Paragraph("3. Presentation date: July 12. We need to submit the slides by July 10.", styles["Normal"]),
+            Spacer(1, 10),
+            Paragraph("<b>Tasks:</b>", styles["Heading3"]),
+            Paragraph("- Self: Research Light-Independent Reactions (Calvin Cycle).", styles["Normal"]),
+            Paragraph("- Study Partner: Design the PowerPoint slides and write the abstract.", styles["Normal"]),
+        ]
+        doc.build(story)
+
+    # 3. Alice in Wonderland Summary PDF
+    pdf_path3 = "sample_files/Alice_in_Wonderland_Summary.pdf"
+    if not os.path.exists(pdf_path3):
+        doc = SimpleDocTemplate(pdf_path3, pagesize=letter)
+        story = [
+            Paragraph("<b>Alice's Adventures in Wonderland - Public Summary</b>", styles["Title"]),
+            Spacer(1, 15),
+            Paragraph("Written by Lewis Carroll in 1865.", styles["Normal"]),
+            Spacer(1, 12),
+            Paragraph("<b>Key Characters:</b>", styles["Heading3"]),
+            Paragraph("- <b>Alice:</b> A young girl who falls down a rabbit hole into a fantasy world.", styles["Normal"]),
+            Paragraph("- <b>The White Rabbit:</b> The prompt and anxious rabbit who leads Alice down the hole.", styles["Normal"]),
+            Paragraph("- <b>The Cheshire Cat:</b> A grinning cat who can disappear and reappear at will.", styles["Normal"]),
+            Paragraph("- <b>The Queen of Hearts:</b> The hot-tempered ruler who frequently orders executions ('Off with their heads!').", styles["Normal"]),
+            Spacer(1, 10),
+            Paragraph("<b>Famous Scenes:</b>", styles["Heading3"]),
+            Paragraph("1. The Mad Tea-Party with the Mad Hatter and the March Hare.", styles["Normal"]),
+            Paragraph("2. The caucus-race and Alice swimming in a pool of her own tears.", styles["Normal"]),
+        ]
+        doc.build(story)
+
 # ── UI ───────────────────────────────────────────────────────────────────────────
 
 def load_samples():
+    generate_sample_pdfs()
     for doc in SAMPLE_DOCS:
         index_document(doc["text"], doc["source"], doc["tenant_id"], doc["allowed_users"])
 
 load_samples()
 
-TENANT = "acme-corp"
+TENANT = "my-cabinet"
 USERS  = list(USER_ACCESS_GUIDE.keys())
 
-with gr.Blocks(title="Enterprise Search", css=CSS) as demo:
+with gr.Blocks(title="Smart File Cabinet") as demo:
 
     tenant_state = gr.State(TENANT)
 
     gr.HTML("""
     <div class="header-container">
         <div class="header-title-section">
-            <h1>Enterprise Search</h1>
-            <p>Hybrid retrieval (BM25 + vector + RRF) with multi-tenant access control.
-               The same pipeline Azure AI Search, Elasticsearch, and Weaviate run internally.</p>
+            <h1>Smart File Cabinet</h1>
+            <p>Hybrid retrieval (BM25 + vector + RRF) with user-level access control.
+               Securely chat with your personal diaries, shared class project notes, and public reference files.</p>
         </div>
         <div class="badge-container">
             <span class="badge">Retrieval: BM25 + Vector + RRF</span>
-            <span class="badge local">Embeddings: text-embedding-004 (local free)</span>
-            <span class="badge api">LLM: Gemini Flash (free tier)</span>
-            <span class="badge local">Access: per-doc ACL</span>
+            <span class="badge local">Embeddings: gemini-embedding-001 (free)</span>
+            <span class="badge api">LLM: Gemini 2.5 Flash</span>
+            <span class="badge local">Access: User-Level ACL</span>
         </div>
     </div>
     """)
@@ -557,16 +656,14 @@ with gr.Blocks(title="Enterprise Search", css=CSS) as demo:
         with gr.Column(scale=1, min_width=290, elem_classes=["panel-block"]):
 
             gr.HTML('<p class="panel-label">Current User</p>')
-            user_dd = gr.Dropdown(choices=USERS, value="alice", label="", interactive=True)
+            user_dd = gr.Dropdown(choices=USERS, value="guest", label="", interactive=True)
             gr.HTML("""
             <div class="access-guide">
-                <b>alice</b> &mdash; HR + Sales docs<br>
-                <b>bob</b>   &mdash; Engineering docs<br>
-                <b>charlie</b> &mdash; Sales docs only<br>
-                <b>admin</b> &mdash; All documents<br>
+                <b>self</b> &mdash; Access to all personal & public files<br>
+                <b>study_partner</b> &mdash; Access to study notes & public files<br>
+                <b>guest</b> &mdash; Access to public files only (e.g. Alice in Wonderland summary)<br>
                 <div class="tip">
-                    Switch users and ask the same question to see how
-                    access control changes what gets retrieved.
+                    Switch users and ask the same question (e.g. "What did I write in my journal?") to see how access control works.
                 </div>
             </div>
             """)
@@ -579,12 +676,38 @@ with gr.Blocks(title="Enterprise Search", css=CSS) as demo:
             refresh_btn = gr.Button("Refresh", size="sm")
             refresh_btn.click(fn=lambda: corpus_stats(TENANT), outputs=[stats_box])
 
+            gr.HTML('<p class="panel-label">Download Sample Files</p>')
+            gr.HTML("""
+            <div style="margin-bottom: 8px; font-size: 0.82em; color: #475569;">
+                Download the local PDFs (pre-loaded in your cabinet) to inspect or test indexing:
+            </div>
+            """)
+            gr.File(
+                value=[
+                    "sample_files/My_Personal_Journal.pdf",
+                    "sample_files/Biology_Group_Project.pdf",
+                    "sample_files/Alice_in_Wonderland_Summary.pdf"
+                ],
+                label="Local Sample PDFs",
+                file_count="multiple",
+                interactive=False
+            )
+
             gr.HTML('<p class="panel-label">Upload document</p>')
+            gr.HTML("""
+            <div style="margin-bottom: 10px; font-size: 0.85em; line-height: 1.4; color: #475569; background-color: #f8fafc; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px;">
+                <b>Need external files?</b> Download online PDFs to test:
+                <ul style="margin: 4px 0 0 16px; padding: 0;">
+                    <li><a href="https://bitcoin.org/bitcoin.pdf" target="_blank" style="color: #ea580c; font-weight: 500; text-decoration: underline;">Bitcoin Whitepaper PDF</a></li>
+                    <li><a href="https://www.gutenberg.org/files/1661/1661-pdf.pdf" target="_blank" style="color: #ea580c; font-weight: 500; text-decoration: underline;">Sherlock Holmes PDF</a></li>
+                </ul>
+            </div>
+            """)
             pdf_file   = gr.File(label="PDF file", file_types=[".pdf"])
-            source_in  = gr.Textbox(label="Document name", placeholder="e.g. Q4 Finance Report")
+            source_in  = gr.Textbox(label="Document name", placeholder="e.g. Study Guide / Textbook")
             users_in   = gr.Textbox(
                 label="Allowed users (comma-separated, empty = all)",
-                placeholder="alice, bob, admin",
+                placeholder="self, study_partner",
             )
             upload_btn = gr.Button("Index document", variant="primary", size="sm")
             upload_out = gr.Textbox(label="Status", interactive=False, lines=2)
@@ -598,16 +721,14 @@ with gr.Blocks(title="Enterprise Search", css=CSS) as demo:
         # MAIN CHAT
         with gr.Column(scale=3):
             chatbot = gr.Chatbot(
-                type="messages",
                 height=510,
                 label="",
                 show_label=False,
-                bubble_full_width=False,
                 render_markdown=True,
             )
             with gr.Row():
                 msg_in   = gr.Textbox(
-                    placeholder="Ask anything about company documents...",
+                    placeholder="Ask anything about your documents...",
                     show_label=False, scale=5, lines=1,
                 )
                 send_btn = gr.Button("Send", variant="primary", scale=1, min_width=80)
@@ -630,4 +751,4 @@ with gr.Blocks(title="Enterprise Search", css=CSS) as demo:
             )
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(css=CSS)
