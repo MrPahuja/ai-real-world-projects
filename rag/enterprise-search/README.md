@@ -1,78 +1,87 @@
-# Smart File Cabinet: Multi-LLM Personal Search & Study Assistant with OCR & Access Control
+# Enterprise RAG Search Cabinet: AI Foundation Hybrid Search System
 
-This project implements a production-grade **Hybrid RAG (Retrieval-Augmented Generation)** pipeline featuring **User-level Access Control Lists (ACLs)** and **Multimodal OCR fallback** for scanned documents. 
+This project implements a production-grade **Hybrid RAG (Retrieval-Augmented Generation)** search architecture featuring **User-level Access Control Lists (ACLs)**, a **Two-Stage Top-K Retrieval Pipeline**, and **Multimodal OCR fallback** capabilities.
 
-It is designed to give you a transparent look at what happens behind the scenes of search engines, showing you each algorithmic step (indexing, embedding, retrieval, Reciprocal Rank Fusion, and user filtering) in pure Python using a highly relatable **personal study vault** theme.
+It has been completely modularized to match enterprise coding standards, splitting data storage, ingestion, search retrieval, generation logic, and UI blocks into distinct clean components.
 
 ---
 
-## System Architecture
+## 1. Why Hybrid Search is Better
 
-The search and retrieval flow runs through the following sequence:
+Standard RAG architectures often rely solely on **Semantic Vector Search**. While powerful, pure vector search fails on specific keyword matches, citation IDs, numbers, and technical terms. To solve this, our system implements **Hybrid Search**, which merges two complementary search paradigms:
+
+1. **Lexical / Keyword Search (BM25):** 
+   * **Strength:** Excellent at exact keyword matching, numbers, technical terms, and identifier lookup. For example, if a user queries "Directive 2025-A-01" or a release date like "January 15", BM25 retrieves the exact document section with absolute precision.
+   * **Weakness:** Cannot understand semantic synonyms, typos, or context.
+2. **Semantic Vector Search (Dense Embeddings):** 
+   * **Strength:** Understands concept matches, synonyms, and natural phrasing. For example, if a user asks "how are we funding the computing resources?", it matches text describing "compute budgets allocated under government guidelines" even without overlapping keywords.
+   * **Weakness:** Often fails on precise names, numbers, or citation codes.
+
+By combining BM25 keyword matching and Vector semantic matching via **Reciprocal Rank Fusion (RRF)**, the system achieves the highest possible retrieval coverage and accuracy.
+
+---
+
+## 2. The Two-Stage Top-K Pipeline
+
+To execute search efficiently at scale, we use a **Two-Stage Top-K Pipeline**:
 
 ```
                   User Query + User Credentials
-                               |
-             +-----------------+-----------------+
-             |                                   |
-     Lexical / Keyword Search           Semantic Vector Search
-     (BM25 on Cabinet Chunks)        (Qdrant + gemini-embedding-001)
-             |                                   |
-             +-----------------+-----------------+
-                               |
-                   Reciprocal Rank Fusion (RRF)
-                               |
+                                |
+             +------------------+------------------+
+             |                                     |
+     Stage 1: BM25 Retrieval              Stage 1: Vector Search
+     Retrieves Top-K1 (20 chunks)        Retrieves Top-K1 (20 chunks)
+             |                                     |
+             +------------------+------------------+
+                                |
+                                v
                    Access Control List (ACL) Filter
-                 (Allows access check per document)
-                               |
-                     Top-5 Chunks -> LLM
-                 (Gemini, OpenAI, or OpenRouter)
-                               |
-                   Streamed Answer + Citations
+                Filters out unauthorized user chunks
+                                |
+                                v
+                     Rank Merger (RRF Fusion)
+                Merges candidates using rank indices
+                                |
+                                v
+                     Stage 2: Final Top-K2 Selection
+                 Selects top K2 (3 chunks) for LLM
 ```
 
----
-
-## Key Search & Retrieval Concepts Implemented
-
-### 1. Ingestion & Multimodal OCR
-* **The Problem:** Many scanned PDF documents (like handwritten notes, study guides, or scanned receipts) contain no selectable digital text. Standard libraries like `pypdf` fail completely, extracting empty strings.
-* **Our Solution:** The ingestion pipeline in `main.py` first checks the length of extracted text. If it is empty or extremely short (under 50 characters), it automatically uploads the document to the **Google Gemini Files API** and runs a multimodal transcription model. This extracts all text, formats tables into Markdown, and cleans up after ingestion.
-* **Production Comparison:** 
-  * In large cloud architectures, teams use **Azure AI Document Intelligence**, **AWS Textract**, or **GCP Document AI** to perform structure-aware layout parsing.
-  * For private or on-premises networks, developers host deep-learning OCR models (like **Surya** or **EasyOCR**) on GPU clusters.
-
-### 2. Hybrid Retrieval (Sparse + Dense)
-* **Keyword Search (BM25):** Ideal for exact-term queries like names, specific numbers, error codes, or legal citations (e.g., matching "July 12" or "photosynthesis").
-* **Vector Search (Qdrant):** Captures semantic meaning and conceptual queries. If a user asks "what did I buy for my family last month?", vector search retrieves the birthday journal entry even if it does not contain the word "buy".
-* **Reciprocal Rank Fusion (RRF):** Instead of normalizing raw, incompatible similarity scores, RRF merges the ranks of matching items using the formula:
-$$\text{Score}(\text{chunk}) = \sum_{m \in \{\text{BM25}, \text{Vector}\}} \frac{1}{\text{rank}_m + 60}$$
-This guarantees that items appearing high in both retrieval lists are pushed to the top of the context block.
-
-### 3. Access Control Lists (ACLs)
-* **Data Security:** Personal vaults require strict security. A visiting guest must not be allowed to see your private journal logs, but they should be able to query public study books.
-* **Retrieval-Time Security:** The system checks credentials (`user_id` and `tenant_id`) *at the retrieval level*. Chunks that the user is not explicitly allowed to view are filtered out before being sent to the LLM.
-
-### 4. Neural Rerankers (The Next Step)
-* **What is it?** A second-pass filtering mechanism that uses a Cross-Encoder model (e.g., Cohere Rerank or MS-MARCO Cross-Encoder) to read the query and retrieved document chunks jointly, scoring them with high precision.
-* **Why it matters:** It eliminates irrelevant noise, prevents "lost in the middle" context window issues, and optimizes answer accuracy.
-* **Enterprise equivalent:** Azure AI Search calls this feature the "Semantic Ranker".
+* **Stage 1 (Parallel Retrieval Pool):** The system queries the keyword index and Qdrant vector index in parallel. Each engine retrieves its respective top **20 candidates** (`BM25_POOL = 20`, `VECTOR_POOL = 20`).
+* **Credential Filtering (ACL):** Candidates that the active user is not authorized to see are filtered out immediately.
+* **Rank Fusion (RRF):** The remaining candidates are merged and scored using the **Reciprocal Rank Fusion (RRF)** formula:
+  $$\text{Score}(c) = \sum_{m \in \{\text{BM25}, \text{Vector}\}} \frac{1}{\text{rank}_m(c) + 60}$$
+  This ranks chunks based on their relative position in both retrieval lists.
+* **Stage 2 (Final Selection):** The RRF-ranked candidate list is sliced to the final top **3 chunks** (`FINAL_TOP_K = 3`), providing a compact, high-relevance context window for the LLM to minimize token costs and prevent "lost in the middle" reasoning drop-offs.
 
 ---
 
-## LLM Provider Comparison & Cost Choices
+## 3. System Architecture & Modular Structure
 
-This project supports multiple LLM endpoints. Choose the provider that best fits your development budget and quality needs:
+The codebase is split into the following production-grade files:
 
-| LLM Provider | Supported Models | Cost | Pros | Cons |
-| :--- | :--- | :--- | :--- | :--- |
-| **Google Gemini** | `gemini-1.5-flash-latest`, `gemini-1.5-pro-latest` | **100% Free** (within free tier RPM limits) | Free tier requires no credit card; outstanding native multimodal OCR. | Occasional rate limit limits (15 RPM). |
-| **OpenRouter** | `meta-llama/llama-3-8b-instruct:free`, `google/gemma-2-9b-it:free`, `zhipu/glm-5.2`, `moonshotai/kimi-k2.6` | **Free & Paid options** | Allows swap-in of open-source and proprietary models; unified keys/billing; prevents vendor lock-in. | Model availability and latency can fluctuate. |
-| **OpenAI** | `gpt-4o`, `gpt-4o-mini` | **Paid** (requires API credit balance) | Industry gold-standard reasoning; high reliability. | No free tier; billing requires active credit card. |
+* **[config.py](config.py):** System configurations, global constants, model weights parameters, and client declarations.
+* **[database.py](database.py):** Database client setup, structured vector schemas, sample database records, and collection diagnostics.
+* **[ingestion.py](ingestion.py):** Character-overlapping token chunkers, OCR transcription fallbacks utilizing Gemini Files API, and document indexing.
+* **[retrieval.py](retrieval.py):** Multimodal search engines, credential ACL filters, and RRF rank mergers.
+* **[llm.py](llm.py):** Generation instruction formatting, chat prompt contexts, and streaming handlers.
+* **[app.py](app.py):** GradBlocks layouts, CSS custom themes, local sample file downloads, and interface triggers.
+* **[main.py](main.py):** Application entry point initiating database samples and starting the server.
 
 ---
 
-## Setup & Configuration
+## 4. User Access Boundaries (ACL Guide)
+
+Sample documents are preloaded to illustrate realistic corporate boundary structures:
+
+* **`self` (Cabinet Owner):** Authorized to view **My Personal Journal** (private entries), **Biology Group Project** notes, and public summaries.
+* **`admin` (System Administrator / Study Partner):** Authorized to view **Biology Group Project** notes (shared workspace) and public summaries.
+* **`guest` (Unauthenticated Visitor):** Limited to public documents only (**Alice in Wonderland Summary**).
+
+---
+
+## 5. Setup & Configuration
 
 ### 1. Installation
 Install the necessary python dependencies:
@@ -81,26 +90,9 @@ pip install -r requirements.txt
 ```
 
 ### 2. Configure Environment Variables
-Copy `.env.example` to `.env`:
+Copy `.env.example` to `.env` and fill in API keys:
 ```bash
 cp .env.example .env
-```
-Open `.env` and fill in the properties:
-```env
-# Choose provider: "gemini", "openai", or "openrouter"
-LLM_PROVIDER=gemini
-
-# Model name:
-# e.g. for gemini: "gemini-2.5-flash"
-# e.g. for openai: "gpt-4o"
-# e.g. for openrouter: "meta-llama/llama-3-8b-instruct:free" or "zhipu/glm-5.2"
-CHAT_MODEL=gemini-2.5-flash
-
-# Provide key corresponding to your selected LLM_PROVIDER
-# Note: GEMINI_API_KEY is also required for embeddings and OCR fallback.
-GEMINI_API_KEY=your_gemini_key_here
-OPENAI_API_KEY=your_openai_key_here
-OPENROUTER_API_KEY=your_openrouter_key_here
 ```
 
 ### 3. Run the App
@@ -108,11 +100,4 @@ Launch the interactive web UI:
 ```bash
 python main.py
 ```
-Open the local Gradio link shown in the terminal (usually `http://127.0.0.1:7860`).
-
----
-
-## Project Structure
-* `main.py`: Main application code containing Qdrant/BM25 indexing, retrieval-fusion, user credentials filtering, and the Gradio web UI.
-* `requirements.txt`: Python package requirements.
-* `.env.example`: Configuration variables template.
+Open **`http://127.0.0.1:7860`** to interact with the cabinet chat and inspect retrieval calculations.
